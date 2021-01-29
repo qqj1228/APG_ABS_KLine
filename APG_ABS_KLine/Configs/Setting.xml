@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Setting>
+  <TCPServerIP>10.10.100.254</TCPServerIP>
+  <TCPServerPort>8899</TCPServerPort>
+  <SerialPort>COM5</SerialPort>
+  <SerialBaud>9600</SerialBaud>
+  <!-- timeout per byte, unit: ms -->
+  <Interval>1000</Interval>
+</Setting>
