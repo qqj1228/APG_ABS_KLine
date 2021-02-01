@@ -18,7 +18,6 @@ namespace Test {
                 return;
             }
 
-            
             Console.WriteLine("Start GetDescription()...");
             code = kl.GetAllECUInfo(out DABS, out DAPG, out DSWV);
             Console.WriteLine("GetDescription() return code: " + (ErrCode)code);
@@ -48,7 +47,6 @@ namespace Test {
                 return;
             }
 
-            //System.Threading.Thread.Sleep(1000);
             Console.WriteLine("Start RoutineAll()...");
             code = RoutineAll(kl);
             Console.WriteLine("RoutineAll() return code: " + (ErrCode)code);
@@ -57,7 +55,6 @@ namespace Test {
                 return;
             }
 
-            //System.Threading.Thread.Sleep(1000);
             Console.WriteLine("Start ReadSensorData()...");
             for (int i = 0; i < 43; i++) {
                 code = kl.ReadSensorData(out uint data);
@@ -70,7 +67,6 @@ namespace Test {
                 }
             }
 
-            
             Console.WriteLine("Start Exit()...");
             code = kl.Exit();
             Console.WriteLine("Exit() return code: " + (ErrCode)code);
