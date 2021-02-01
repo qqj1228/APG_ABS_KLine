@@ -14,7 +14,7 @@ namespace APG_ABS_KLine {
         private readonly Logger _log;
         private readonly Config _cfg;
         private readonly SerialPortClass _sp;
-        private readonly List<Frame> _frames;
+        private readonly Queue<Frame> _frames;
         private readonly byte _addr, _sync, _k1, _k2, _k3;
         private readonly int _loopInterval;
         private readonly int _retryTimes;
@@ -33,11 +33,11 @@ namespace APG_ABS_KLine {
             _k3 = 0x75;
             _loopInterval = 20;
             _retryTimes = 2;
+            _frames = new Queue<Frame>();
             _sp = new SerialPortClass(_cfg.Setting.Data.SerialPort, _cfg.Setting.Data.SerialBaud, Parity.None, 8, StopBits.One);
             try {
                 _sp.OpenPort();
                 _sp.DataReceived += new SerialPortClass.SerialPortDataReceiveEventArgs(SerialDataReceived);
-                _frames = new List<Frame>();
             } catch (Exception ex) {
                 _log.TraceError("Open serial port error: " + ex.Message);
                 throw;
@@ -48,15 +48,22 @@ namespace APG_ABS_KLine {
             string log = string.Empty;
             for (int i = 0; i < bits.Length; i++) {
                 log += bits[i].ToString("X2") + " ";
-                if (_frames.Count > 0 && _frames.Last().Data == null) {
-                    _frames.Last().Data = bits[i];
+                Frame frameBuf = new Frame(0, 0);
+                if (frameBuf.Data == null) {
+                    frameBuf.Data = bits[i];
+                    _frames.Enqueue(frameBuf);
                 } else {
                     if (bits[i] == 0x05 || bits[i] == 0x96) {
-                        Frame frame = new Frame(bits[0]);
+                        frameBuf.Baud = bits[i];
+                        frameBuf.Data = null;
                         if (i + 1 < bits.Length) {
-                            frame.Data = bits[i + 1];
+                            log += bits[i + 1].ToString("X2") + " ";
+                            frameBuf.Data = bits[i + 1];
+                            ++i;
+                        } else {
+                            break;
                         }
-                        _frames.Add(frame);
+                        _frames.Enqueue(frameBuf);
                     }
                 }
             }
@@ -78,11 +85,10 @@ namespace APG_ABS_KLine {
 
         private int SendByte(byte data, out byte verifyCode) {
             verifyCode = 0;
-            _frames.Clear();
             SendSerialData(new byte[] { 0x96, data }, 0, 2);
             DateTime start = DateTime.Now;
             while (true) {
-                if (_frames.Count > 0 && _frames.First().Data.HasValue) {
+                if (_frames.Count > 0) {
                     break;
                 }
                 TimeSpan interval = DateTime.Now - start;
@@ -91,9 +97,10 @@ namespace APG_ABS_KLine {
                 }
                 Thread.Sleep(_loopInterval);
             }
-            verifyCode = (byte)(_frames.First().Data.HasValue ? _frames.First().Data : 0);
-            if (_frames.First().Data != (byte)~data) {
-                _log.TraceError(string.Format("VerifyError, Send: {0:X2}, Recv: {1:X2}", data, _frames.First().Data));
+            Frame frame = _frames.Dequeue();
+            verifyCode = (byte)(frame.Data.HasValue ? frame.Data : 0);
+            if (frame.Data != (byte)~data) {
+                _log.TraceError(string.Format("VerifyError, Send: {0:X2}, Recv: {1:X2}", data, frame.Data));
                 return (int)ErrCode.VerifyError;
             } else {
                 return (int)ErrCode.NoError;
@@ -133,13 +140,13 @@ namespace APG_ABS_KLine {
             resp = 0xFF;
             int loopNum = _cfg.Setting.Data.Interval / _loopInterval;
             for (int i = 0; i < loopNum; i++) {
-                if (_frames.Count > 0 && _frames.First().Data.HasValue) {
-                    buf = (byte)(_frames.First().Data.HasValue ? _frames.First().Data : 0);
+                if (_frames.Count > 0) {
+                    Frame frame = _frames.Dequeue();
+                    buf = (byte)(frame.Data.HasValue ? frame.Data : 0);
                     if (bNotEnd || buf != 0x03) {
                         resp = (byte)~buf;
                         SendSerialData(new byte[] { 0x96, resp }, 0, 2);
                     }
-                    _frames.Clear();
                     return true;
                 } else {
                     Thread.Sleep(_loopInterval);
@@ -150,7 +157,6 @@ namespace APG_ABS_KLine {
 
         public int RecvData(List<byte> datas) {
             string log = string.Empty;
-            _frames.Clear();
             List<byte> resps = new List<byte>();
             if (RecvByte(out byte buf, datas.Count < 3, out byte resp)) {
                 datas.Add(buf);
@@ -211,9 +217,11 @@ namespace APG_ABS_KLine {
                 }
                 Thread.Sleep(_loopInterval);
             }
-            _log.TraceInfo(string.Format("RX: {0:X2} {1:X2} {2:X2}", _frames[0].Data, _frames[1].Data, _frames[2].Data));
-            if (_frames[0].Data == _sync && _frames[1].Data == _k1 && _frames[2].Data == _k2) {
-                _frames.Clear();
+            Frame sync = _frames.Dequeue();
+            Frame k1 = _frames.Dequeue();
+            Frame k2 = _frames.Dequeue();
+            _log.TraceInfo(string.Format("RX: {0:X2} {1:X2} {2:X2}", sync.Data, k1.Data, k2.Data));
+            if (sync.Data == _sync && k1.Data == _k1 && k2.Data == _k2) {
                 SendSerialData(new byte[] { 0x96, _k3 }, 0, 2);
                 _log.TraceInfo(string.Format("TX: {0:X2}", _k3));
 
@@ -224,7 +232,6 @@ namespace APG_ABS_KLine {
                         break;
                     }
                     _log.TraceError(((ErrCode)errCode).ToString());
-                    _frames.Clear();
                     SendSerialData(new byte[] { 0x96, _k3 }, 0, 2);
                     _log.TraceInfo(string.Format("TX: {0:X2}", _k3));
                     datas.Clear();
@@ -246,7 +253,6 @@ namespace APG_ABS_KLine {
                 }
             } else {
                 _log.TraceError("RecvDataWrong");
-                _frames.Clear();
                 return (int)ErrCode.RecvDataWrong;
             }
         }
@@ -258,7 +264,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int GetOneECUInfo(out string info) {
             info = string.Empty;
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x00 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -303,7 +308,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int GetOneECUInfo(out byte[] infos) {
             infos = new byte[5];
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x00 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -384,7 +388,6 @@ namespace APG_ABS_KLine {
         /// </summary>
         /// <returns></returns>
         public int ClearDTC() {
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x05 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -423,7 +426,6 @@ namespace APG_ABS_KLine {
         /// </summary>
         /// <returns></returns>
         public int Exit() {
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x06 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -438,7 +440,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int GetDTCCount(out int count) {
             count = 0;
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x07 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -479,7 +480,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int ReadDTC(out uint[] DTCs) {
             DTCs = new uint[1];
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x03, 0x07 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -529,7 +529,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int RoutineCtrl(out uint func) {
             func = 0;
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x04, 0x04, 0x00 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
@@ -646,7 +645,6 @@ namespace APG_ABS_KLine {
         /// <returns></returns>
         public int ReadSensorData(out uint sensorData) {
             sensorData = 0;
-            _frames.Clear();
             int errCode = SendCMD(new byte[] { 0x04, 0x29, 0x00 });
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceError(((ErrCode)errCode).ToString());
