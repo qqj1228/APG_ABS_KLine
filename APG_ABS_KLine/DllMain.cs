@@ -13,7 +13,7 @@ namespace APG_ABS_KLine {
     public class DllMain {
         private readonly Logger _log;
         private readonly Config _cfg;
-        private readonly SerialPortClass _sp;
+        private SerialPortClass _sp;
         private readonly Queue<Frame> _frames;
         private readonly byte _addr, _sync, _k1, _k2, _k3;
         private readonly int _loopInterval;
@@ -34,6 +34,9 @@ namespace APG_ABS_KLine {
             _loopInterval = 20;
             _retryTimes = 2;
             _frames = new Queue<Frame>();
+        }
+
+        public void ConnectCOMPort() {
             _sp = new SerialPortClass(_cfg.Setting.Data.SerialPort, _cfg.Setting.Data.SerialBaud, Parity.None, 8, StopBits.One);
             try {
                 _sp.OpenPort();
@@ -42,6 +45,10 @@ namespace APG_ABS_KLine {
                 _log.TraceError("Open serial port error: " + ex.Message);
                 throw;
             }
+        }
+
+        public void ReleaseCOMPort() {
+            _sp.ClosePort();
         }
 
         private void SerialDataReceived(object sender, SerialDataReceivedEventArgs e, byte[] bits) {
@@ -110,20 +117,23 @@ namespace APG_ABS_KLine {
         public int SendCMD(byte[] cmd) {
             string log = string.Empty;
             int errCode = SendByte(cmd[0], out byte verifyCode);
-            log += string.Format("{0:X2}({1:X2})", cmd[0], verifyCode);
+            //log += string.Format("{0:X2}({1:X2})", cmd[0], verifyCode);
+            log += string.Format("{0:X2} ", cmd[0]);
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceInfo("TX: " + log);
                 return errCode;
             }
             errCode = SendByte(++_synNum, out verifyCode);
-            log += string.Format("{0:X2}({1:X2})", _synNum, verifyCode);
+            //log += string.Format("{0:X2}({1:X2})", _synNum, verifyCode);
+            log += string.Format("{0:X2} ", _synNum);
             if (errCode != (int)ErrCode.NoError) {
                 _log.TraceInfo("TX: " + log);
                 return errCode;
             }
             for (int i = 1; i < cmd.Length; i++) {
                 errCode = SendByte(cmd[i], out verifyCode);
-                log += string.Format("{0:X2}({1:X2})", cmd[i], verifyCode);
+                //log += string.Format("{0:X2}({1:X2})", cmd[i], verifyCode);
+                log += string.Format("{0:X2} ", cmd[i]);
                 if (errCode != (int)ErrCode.NoError) {
                     _log.TraceInfo("TX: " + log);
                     return errCode;
@@ -166,7 +176,8 @@ namespace APG_ABS_KLine {
                     if (i == datas.Count - 1 && (i >= resps.Count || datas[i] != (byte)~resps[i])) {
                         log += string.Format("{0:X2}", datas[i]);
                     } else {
-                        log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                        //log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                        log += string.Format("{0:X2} ", datas[i]);
                     }
                 }
                 _log.TraceInfo("RX: " + log);
@@ -185,7 +196,8 @@ namespace APG_ABS_KLine {
                         if (i == datas.Count - 1 && (i >= resps.Count || datas[i] != (byte)~resps[i])) {
                             log += string.Format("{0:X2}", datas[i]);
                         } else {
-                            log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                            //log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                            log += string.Format("{0:X2} ", datas[i]);
                         }
                     }
                     _log.TraceInfo("RX: " + log);
@@ -197,7 +209,8 @@ namespace APG_ABS_KLine {
                 if (i == datas.Count - 1 && (i >= resps.Count || datas[i] != (byte)~resps[i])) {
                     log += string.Format("{0:X2}", datas[i]);
                 } else {
-                    log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                    //log += string.Format("{0:X2}({1:X2})", datas[i], resps[i]);
+                    log += string.Format("{0:X2} ", datas[i]);
                 }
             }
             _log.TraceInfo("RX: " + log);

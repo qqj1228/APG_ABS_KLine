@@ -9,6 +9,8 @@ namespace Test {
     class Program {
         static void Main(string[] args) {
             DllMain kl = new DllMain(Environment.CurrentDirectory);
+            kl.ConnectCOMPort();
+
             Console.WriteLine("Start Initialize()...");
             int code = InitAndGetAllECUInfo(kl, out string DABS, out string DAPG, out string DSWV);
             Console.WriteLine("Initialize() return code: " + (ErrCode)code);
@@ -75,6 +77,7 @@ namespace Test {
                 return;
             }
 
+            kl.ReleaseCOMPort();
             Console.ReadKey();
         }
 
