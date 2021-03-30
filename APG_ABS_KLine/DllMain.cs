@@ -36,19 +36,21 @@ namespace APG_ABS_KLine {
             _frames = new Queue<Frame>();
         }
 
-        public void ConnectCOMPort() {
-            _sp = new SerialPortClass(_cfg.Setting.Data.SerialPort, _cfg.Setting.Data.SerialBaud, Parity.None, 8, StopBits.One);
+        public int ConnectCOMPort() {
             try {
+                _sp = new SerialPortClass(_cfg.Setting.Data.SerialPort, _cfg.Setting.Data.SerialBaud, Parity.None, 8, StopBits.One);
                 _sp.OpenPort();
                 _sp.DataReceived += new SerialPortClass.SerialPortDataReceiveEventArgs(SerialDataReceived);
             } catch (Exception ex) {
                 _log.TraceError("Open serial port error: " + ex.Message);
-                throw;
+                return (int)ErrCode.Unknown;
             }
+            return (int)ErrCode.NoError;
         }
 
-        public void ReleaseCOMPort() {
+        public int ReleaseCOMPort() {
             _sp.ClosePort();
+            return (int)ErrCode.NoError;
         }
 
         private void SerialDataReceived(object sender, SerialDataReceivedEventArgs e, byte[] bits) {
